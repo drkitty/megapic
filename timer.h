@@ -1,6 +1,10 @@
 #pragma once
 
+
 #include <stdint.h>
+
+
+#define T1C_FOC() do { TCCR1C |= 1<<FOC1C; } while (0)
 
 
 enum {
