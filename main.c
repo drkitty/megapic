@@ -46,6 +46,8 @@ unsigned int read_data_cmd[] = {
     0, 0, 1, 0, 0, 0,
 };
 
+unsigned int read_data_data[16] = {0};
+
 
 struct state {
     const uint8_t clr;
@@ -83,6 +85,7 @@ struct state phase_begin[] = {
     {
         .len = lengthof(lvp_key),
         .data = lvp_key,
+        .post_delay = 4,
     },
 
     // load configuration (command)
@@ -107,11 +110,17 @@ struct state phase_inc_addr[] = {
 };
 
 struct state phase_read_device_id[] = {
-    // read data from program memory
+    // read data from program memory (command)
     {
-        .in = true,
         .len = lengthof(read_data_cmd),
         .data = read_data_cmd,
+    },
+
+    // read data from program memory (data)
+    {
+        .in = true,
+        .len = lengthof(read_data_data),
+        .data = read_data_data,
     }
 };
 
@@ -143,16 +152,16 @@ struct phase {
 
 
 
-/*
- *ISR(USART0_RX_vect)
- *{
- *    uint8_t c = UDR0;
- *    (void)c;
- *}
- */
-
-
 unsigned int phase_idx = 0;
+
+uint8_t to_send;
+
+
+ISR(USART0_UDRE_vect)
+{
+    UDR0 = to_send;
+    U0_ie_config(-1, -1, 0);
+}
 
 
 void advance(struct phase* phase, struct state* state)
@@ -210,8 +219,13 @@ ISR(TIMER3_COMPA_vect)
         if (PORTA & 1<<CLK) {
             // falling edge
             bclr(PORTA, 1<<CLK);
-            if (state->in)
-                state->data[state->d] = PORTA & 1<<DAT ? 1 : 0;
+            if (state->in) {
+                state->data[state->d] = (PINA & 1<<DAT) ? 1 : 0;
+                if (state->d != 0 && state->d != 15) {
+                    to_send = state->data[state->d] ? '1' : '0';
+                    U0_ie_config(-1, -1, 1);
+                }
+            }
             advance(phase, state);
         } else {
             // rising edge
@@ -242,9 +256,12 @@ int main()
      *OCR1A = 3906; // rising edge at 2 Hz
      */
 
+    U0_config(0, 1, umode_async, upar_none, ustop_1, usize_8, 103);
+    U0_ie_config(0, 0, 0);
+
     T3_config(wgm_ctc_ocr, cs_none);
     T3A_config(com_dc, 1);
-    OCR3A = 7813; // 2 Hz
+    OCR3A = 977; // 16 Hz
 
     TCNT3 = 0;
     T3_config(-1, cs_clkio_1024);
