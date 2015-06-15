@@ -104,16 +104,7 @@ struct state phase_begin[] = {
     },
 };
 
-struct state phase_inc_addr[] = {
-    // increment address
-    {
-        .len = lengthof(inc_addr_cmd),
-        .data = inc_addr_cmd,
-        .post_delay = 1, // 20 us (>1 us)
-    },
-};
-
-struct state phase_read_device_id[] = {
+struct state phase_read_config[] = {
     // read data from program memory (command)
     {
         .len = lengthof(read_data_cmd),
@@ -127,7 +118,14 @@ struct state phase_read_device_id[] = {
         .len = lengthof(read_data_data),
         .data = read_data_data,
         .post_delay = 1, // 20 us (>1 us)
-    }
+    },
+
+    // increment address
+    {
+        .len = lengthof(inc_addr_cmd),
+        .data = inc_addr_cmd,
+        .post_delay = 1, // 20 us (>1 us)
+    },
 };
 
 
@@ -145,14 +143,9 @@ struct phase {
         .times = 1,
     },
     {
-        .len = lengthof(phase_inc_addr),
-        .states = phase_inc_addr,
-        .times = 6, // move to address 0x8006
-    },
-    {
-        .len = lengthof(phase_read_device_id),
-        .states = phase_read_device_id,
-        .times = 1,
+        .len = lengthof(phase_read_config),
+        .states = phase_read_config,
+        .times = 11, // 0x8000 to 0x800A
     },
 };
 
@@ -160,8 +153,8 @@ struct phase {
 
 unsigned int phase_idx = 0;
 
-int send_idx;
 uint8_t send_buf[2];
+unsigned int send_idx = lengthof(send_buf);
 
 
 ISR(USART0_UDRE_vect)
@@ -225,6 +218,10 @@ ISR(TIMER3_COMPA_vect)
     if (state->d < state->len) {
         // send or receive data
         if (PORTA & 1<<CLK) {
+            // delay if USART data is still pending
+            if (send_idx < lengthof(send_buf))
+                return;
+
             // falling edge
             bclr(PORTA, 1<<CLK);
             if (state->in) {
