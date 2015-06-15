@@ -1,4 +1,4 @@
 .*.sw?
 
-/pic
-/pic.bin
+/get_dev_id
+/get_dev_id.bin
