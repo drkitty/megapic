@@ -155,12 +155,11 @@ struct phase {
 unsigned int phase_idx = 0;
 
 
-ISR(TIMER3_COMPA_vect)
+void advance(struct phase* phase, struct state* state)
 {
-    struct phase* phase = &phases[phase_idx];
-    struct state* state = &phase->states[phase->s];
-
+    // advance data index
     ++state->d;
+
     if (state->d >= state->len) {
         if (state->d >= state->len + state->post_delay) {
             // reinitialize current state
@@ -195,11 +194,16 @@ ISR(TIMER3_COMPA_vect)
             bclror(DDRA, 1<<DAT, (state->in ? 0 : 1)<<DAT);
             bclr(PORTA, state->clr);
             bset(PORTA, state->set);
-        } else {
-            // delay (do nothing)
-            return;
         }
+        // else delay (do nothing)
     }
+}
+
+
+ISR(TIMER3_COMPA_vect)
+{
+    struct phase* phase = &phases[phase_idx];
+    struct state* state = &phase->states[phase->s];
 
     if (state->d < state->len) {
         // send or receive data
@@ -208,12 +212,15 @@ ISR(TIMER3_COMPA_vect)
             bclr(PORTA, 1<<CLK);
             if (state->in)
                 state->data[state->d] = PORTA & 1<<DAT ? 1 : 0;
+            advance(phase, state);
         } else {
             // rising edge
             bset(PORTA, 1<<CLK);
             if (!state->in)
                 bclror(PORTA, 1<<DAT, state->data[state->d]<<DAT);
         }
+    } else {
+        advance(phase, state);
     }
 }
 
