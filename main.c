@@ -16,6 +16,8 @@
 #define CLK 2
 
 
+// All keys, commands, and data are LSb first.
+
 unsigned int lvp_key[] = {
     0, 0, 0, 0,
     1, 0, 1, 0,
