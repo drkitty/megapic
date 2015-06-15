@@ -71,33 +71,34 @@ struct state phase_begin[] = {
     {
         .set = 1<<MCLR_N,
         .len = 0,
-        .post_delay = 4,
+        .post_delay = 1, // 20 us (>100 ns)
     },
 
     // reset
     {
         .clr = 1<<MCLR_N,
         .len = 0,
-        .post_delay = 4,
+        .post_delay = 20, // 400 us (>250 us)
     },
 
     // send LVP key
     {
         .len = lengthof(lvp_key),
         .data = lvp_key,
-        .post_delay = 4,
     },
 
     // load configuration (command)
     {
         .len = lengthof(config_cmd),
         .data = config_cmd,
+        .post_delay = 1, // 20 us (>1 us)
     },
 
     // load configuration (data)
     {
         .len = lengthof(config_data),
         .data = config_data,
+        .post_delay = 1, // 20 us (>1 us)
     },
 };
 
@@ -106,6 +107,7 @@ struct state phase_inc_addr[] = {
     {
         .len = lengthof(inc_addr_cmd),
         .data = inc_addr_cmd,
+        .post_delay = 1, // 20 us (>1 us)
     },
 };
 
@@ -114,6 +116,7 @@ struct state phase_read_device_id[] = {
     {
         .len = lengthof(read_data_cmd),
         .data = read_data_cmd,
+        .post_delay = 1, // 20 us (>1 us)
     },
 
     // read data from program memory (data)
@@ -121,6 +124,7 @@ struct state phase_read_device_id[] = {
         .in = true,
         .len = lengthof(read_data_data),
         .data = read_data_data,
+        .post_delay = 1, // 20 us (>1 us)
     }
 };
 
@@ -154,13 +158,15 @@ struct phase {
 
 unsigned int phase_idx = 0;
 
-uint8_t to_send;
+int send_idx;
+uint8_t send_buf[2];
 
 
 ISR(USART0_UDRE_vect)
 {
-    UDR0 = to_send;
-    U0_ie_config(-1, -1, 0);
+    UDR0 = send_buf[send_idx];
+    if (++send_idx == lengthof(send_buf))
+        U0_ie_config(-1, -1, 0);
 }
 
 
@@ -221,8 +227,13 @@ ISR(TIMER3_COMPA_vect)
             bclr(PORTA, 1<<CLK);
             if (state->in) {
                 state->data[state->d] = (PINA & 1<<DAT) ? 1 : 0;
-                if (state->d != 0 && state->d != 15) {
-                    to_send = state->data[state->d] ? '1' : '0';
+                if (state->d == 15) {
+                    send_buf[0] = 0;
+                    for (int i = 14; i >= 9; --i)
+                        send_buf[0] = (send_buf[0] << 1) | state->data[i];
+                    for (int i = 8; i >= 1; --i)
+                        send_buf[1] = (send_buf[1] << 1) | state->data[i];
+                    send_idx = 0;
                     U0_ie_config(-1, -1, 1);
                 }
             }
@@ -246,25 +257,16 @@ int main()
 
     bclror(PORTA, 1<<MCLR_N | 1<<DAT | 1<<CLK, 1<<MCLR_N);
 
-    /*U0_ie_config(1, 0, 0);*/
-    /*U0_config(1, 1, umode_async, upar_none, ustop_1, usize_8, 103);*/
-    // 9600 baud
-
-    /*
-     *T1_config(wgm_ctc_ocr, cs_none);
-     *T1C_config(com_toggle, 0);
-     *OCR1A = 3906; // rising edge at 2 Hz
-     */
-
     U0_config(0, 1, umode_async, upar_none, ustop_1, usize_8, 103);
+    // 9600 baud
     U0_ie_config(0, 0, 0);
 
     T3_config(wgm_ctc_ocr, cs_none);
     T3A_config(com_dc, 1);
-    OCR3A = 977; // 16 Hz
+    OCR3A = 40; // 50 kHz (period 20 us)
 
     TCNT3 = 0;
-    T3_config(-1, cs_clkio_1024);
+    T3_config(-1, cs_clkio_8);
     sei();
 
     spin();
