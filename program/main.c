@@ -98,12 +98,26 @@ int main()
 
     {
         struct pic_tf* buf = buffer;
+
         buf = pic_enter_lvp(buf, false);
+        buf = pic_bulk_erase(buf, false);
+
         buf = pic_load_config(buf, false, config_data);
+        buf = pic_int_timed_prgm(buf, false);
+
+        buf = pic_inc_addr(buf, false);
         buf = pic_load_data(buf, false, config_data);
+        buf = pic_int_timed_prgm(buf, false);
+
+        buf = pic_inc_addr(buf, false);
         buf = pic_load_data(buf, false, config_data);
+        buf = pic_int_timed_prgm(buf, false);
+
+        buf = pic_inc_addr(buf, false);
         buf = pic_load_data(buf, false, config_data);
-        pic_int_timed_prgm(buf, true);
+        buf = pic_int_timed_prgm(buf, false);
+
+        buf = pic_load_config(buf, true, config_data);
     }
 
     pic_init(buffer);
