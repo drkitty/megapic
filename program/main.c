@@ -18,7 +18,7 @@
 
 uint8_t config_data[] = {
     0, // start
-    0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0,
+    1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0,
     0, // stop
 };
 
@@ -31,23 +31,23 @@ struct pic_tf buffer[20];
 
 
 enum {
-    ENTER_LVP,
-    SEND_CONFIG,
-} phase = ENTER_LVP;
+    PROGRAM_CONFIG,
+    READ_CONFIG,
+} phase = PROGRAM_CONFIG;
 
 
 struct pic_tf* next_phase()
 {
     static unsigned int count;
 
-    if (phase == ENTER_LVP) {
-        phase = SEND_CONFIG;
+    if (phase == PROGRAM_CONFIG) {
+        phase = READ_CONFIG;
         count = 0;
 
         struct pic_tf* buf = buffer;
         buf = pic_read_data(buf, false);
         pic_inc_addr(buf, true);
-    } else if (phase == SEND_CONFIG) {
+    } else if (phase == READ_CONFIG) {
         ++count;
         if (count > 0x00A)
             return NULL; // no more phases
@@ -85,11 +85,12 @@ ISR(TIMER3_COMPA_vect)
 
 int main()
 {
-    bset(DDRB, 1<<7);
-
     U0_config(0, 1, umode_async, upar_none, ustop_1, usize_8, 103);
     // 9600 baud
     U0_ie_config(1, 0, 0);
+
+    bset(DDRB, 1<<7);
+    bclr(PORTB, 1<<7);
 
     T3_config(wgm_ctc_ocr, cs_none);
     T3A_config(com_dc, 1);
@@ -98,10 +99,14 @@ int main()
     {
         struct pic_tf* buf = buffer;
         buf = pic_enter_lvp(buf, false);
-        pic_load_config(buf, true, config_data);
-
-        pic_init(buffer);
+        buf = pic_load_config(buf, false, config_data);
+        buf = pic_load_data(buf, false, config_data);
+        buf = pic_load_data(buf, false, config_data);
+        buf = pic_load_data(buf, false, config_data);
+        pic_int_timed_prgm(buf, true);
     }
+
+    pic_init(buffer);
 
     TCNT3 = 0;
     T3_config(-1, cs_clkio_8);

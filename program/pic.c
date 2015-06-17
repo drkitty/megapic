@@ -13,6 +13,14 @@
 #define CLK 2
 
 
+#define T_ENTS 1 // 20 us (>100 ns)
+#define T_ENTH 25 // 500 us (>250 us)
+#define T_DLY 1 // 20 us (>1 us)
+#define T_PINT 500 // 10 ms (>5 ms)
+#define T_ERAB 500 // 10 ms (>5 ms)
+#define T_ERAR 250 // 5 ms (>2.5 ms)
+
+
 // All keys, commands, and data are LSb first.
 
 uint8_t lvp_key[] = {
@@ -27,16 +35,36 @@ uint8_t lvp_key[] = {
     0, // don't care
 };
 
-uint8_t config_cmd[] = {
+uint8_t load_config_cmd[] = {
     0, 0, 0, 0, 0, 0,
+};
+
+uint8_t load_data_cmd[] = {
+    0, 1, 0, 0, 0, 0,
+};
+
+uint8_t read_data_cmd[] = {
+    0, 0, 1, 0, 0, 0,
 };
 
 uint8_t inc_addr_cmd[] = {
     0, 1, 1, 0, 0, 0,
 };
 
-uint8_t read_data_cmd[] = {
-    0, 0, 1, 0, 0, 0,
+uint8_t reset_addr_cmd[] = {
+    0, 1, 1, 0, 1, 0,
+};
+
+uint8_t int_timed_prgm_cmd[] = {
+    0, 0, 0, 1, 0, 0,
+};
+
+uint8_t bulk_erase_cmd[] = {
+    1, 0, 0, 1, 0, 0,
+};
+
+uint8_t row_erase_cmd[] = {
+    1, 0, 0, 0, 1, 0,
 };
 
 
@@ -140,18 +168,19 @@ struct pic_tf* pic_enter_lvp(struct pic_tf* tf, bool final)
     // run
     *(tf++) = (struct pic_tf){
         .mclr_n = 1,
-        .post_delay = 1, // 20 us (>100 ns)
+        .post_delay = T_ENTS,
     };
 
     // reset
     *(tf++) = (struct pic_tf){
-        .post_delay = 20, // 400 us (>250 us)
+        .post_delay = T_ENTH,
     };
 
     // send LVP key
     *(tf++) = (struct pic_tf){
         .len = lengthof(lvp_key),
         .data = lvp_key,
+        .post_delay = T_DLY,
         .final = final,
     };
 
@@ -159,21 +188,20 @@ struct pic_tf* pic_enter_lvp(struct pic_tf* tf, bool final)
 }
 
 
+// Load configuration
 struct pic_tf* pic_load_config(struct pic_tf* tf, const bool final,
-        uint8_t* const config_data)
+        uint8_t* const data)
 {
-    // load configuration (command)
     *(tf++) = (struct pic_tf){
-        .len = lengthof(config_cmd),
-        .data = config_cmd,
-        .post_delay = 1, // 20 us (>1 us)
+        .len = lengthof(load_config_cmd),
+        .data = load_config_cmd,
+        .post_delay = T_DLY,
     };
 
-    // load configuration (data)
     *(tf++) = (struct pic_tf){
         .len = 16,
-        .data = config_data,
-        .post_delay = 1, // 20 us (>1 us)
+        .data = data,
+        .post_delay = T_DLY,
         .final = final,
     };
 
@@ -181,21 +209,41 @@ struct pic_tf* pic_load_config(struct pic_tf* tf, const bool final,
 }
 
 
+// Load data for program memory
+struct pic_tf* pic_load_data(struct pic_tf* tf, const bool final,
+        uint8_t* const data)
+{
+    *(tf++) = (struct pic_tf){
+        .len = lengthof(load_data_cmd),
+        .data = load_data_cmd,
+        .post_delay = T_DLY,
+    };
+
+    *(tf++) = (struct pic_tf){
+        .len = 16,
+        .data = data,
+        .post_delay = T_DLY,
+        .final = final,
+    };
+
+    return tf;
+}
+
+
+// Read data from program memory
 struct pic_tf* pic_read_data(struct pic_tf* tf, const bool final)
 {
-    // read data from program memory (command)
     *(tf++) = (struct pic_tf){
         .len = lengthof(read_data_cmd),
         .data = read_data_cmd,
-        .post_delay = 1, // 20 us (>1 us)
+        .post_delay = T_DLY,
     };
 
-    // read data from program memory (data)
     *(tf++) = (struct pic_tf){
         .in = true,
         .len = lengthof(read_data_data),
         .data = read_data_data,
-        .post_delay = 1, // 20 us (>1 us)
+        .post_delay = T_DLY,
         .final = final,
     };
 
@@ -203,13 +251,69 @@ struct pic_tf* pic_read_data(struct pic_tf* tf, const bool final)
 }
 
 
+// Increment address
 struct pic_tf* pic_inc_addr(struct pic_tf* tf, const bool final)
 {
-    // increment address
     *(tf++) = (struct pic_tf){
         .len = lengthof(inc_addr_cmd),
         .data = inc_addr_cmd,
-        .post_delay = 1, // 20 us (>1 us)
+        .post_delay = T_DLY,
+        .final = final,
+    };
+
+    return tf;
+}
+
+
+// Reset address
+struct pic_tf* pic_reset_addr(struct pic_tf* tf, const bool final)
+{
+    *(tf++) = (struct pic_tf){
+        .len = lengthof(reset_addr_cmd),
+        .data = reset_addr_cmd,
+        .post_delay = T_DLY,
+        .final = final,
+    };
+
+    return tf;
+}
+
+
+// Begin internally timed programming
+struct pic_tf* pic_int_timed_prgm(struct pic_tf* tf, const bool final)
+{
+    *(tf++) = (struct pic_tf){
+        .len = lengthof(int_timed_prgm_cmd),
+        .data = int_timed_prgm_cmd,
+        .post_delay = T_PINT,
+        .final = final,
+    };
+
+    return tf;
+}
+
+
+// Bulk erase program memory
+struct pic_tf* pic_bulk_erase(struct pic_tf* tf, const bool final)
+{
+    *(tf++) = (struct pic_tf){
+        .len = lengthof(bulk_erase_cmd),
+        .data = bulk_erase_cmd,
+        .post_delay = T_ERAB,
+        .final = final,
+    };
+
+    return tf;
+}
+
+
+// Row erase program memory
+struct pic_tf* pic_row_erase(struct pic_tf* tf, const bool final)
+{
+    *(tf++) = (struct pic_tf){
+        .len = lengthof(row_erase_cmd),
+        .data = row_erase_cmd,
+        .post_delay = T_ERAR,
         .final = final,
     };
 

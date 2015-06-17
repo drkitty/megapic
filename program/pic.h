@@ -32,8 +32,19 @@ bool pic_step(struct pic_tf* (* const next_phase)(),
 struct pic_tf* pic_enter_lvp(struct pic_tf* tf, const bool final);
 
 struct pic_tf* pic_load_config(struct pic_tf* tf, const bool final,
-        uint8_t* const config_data);
+        uint8_t* const data);
+
+struct pic_tf* pic_load_data(struct pic_tf* tf, const bool final,
+        uint8_t* const data);
 
 struct pic_tf* pic_read_data(struct pic_tf* tf, const bool final);
 
 struct pic_tf* pic_inc_addr(struct pic_tf* tf, const bool final);
+
+struct pic_tf* pic_reset_addr(struct pic_tf* tf, const bool final);
+
+struct pic_tf* pic_int_timed_prgm(struct pic_tf* tf, const bool final);
+
+struct pic_tf* pic_bulk_erase(struct pic_tf* tf, const bool final);
+
+struct pic_tf* pic_row_erase(struct pic_tf* tf, const bool final);
