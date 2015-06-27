@@ -45,6 +45,14 @@ enum {
 } phase = PH_HANDSHAKE_SEND;
 
 
+void die()
+{
+    disable_timer();
+    U0_config(0, 0, -1, -1, -1, -1, -1);
+    spin();
+}
+
+
 void next_phase()
 {
     // clean up and advance
@@ -75,8 +83,7 @@ void next_phase()
         U0_ie_config(-1, -1, 0);
         phase = PH_RECV_LEN;
     } else if (phase == PH_RUN) {
-        disable_timer();
-        spin();
+        die();
     }
 
     // initialize
@@ -99,7 +106,7 @@ void next_phase()
         prgm_pos = 0;
 
         struct pic_tf* t = tfs;
-        for (uint8_t i = 0; i < prgm_len * 16; i += 16) {
+        for (uint16_t i = 0; i < prgm_len * 16; i += 16) {
             t = pic_load_data(t, false, &prgm_buf[i]);
             t = pic_inc_addr(t, false);
         }
@@ -123,8 +130,7 @@ ISR(USART0_RX_vect)
 {
     if (phase == PH_HANDSHAKE_RECV) {
         if (UDR0 != 0xB4) {
-            U0_config(0, 0, -1, -1, -1, -1, -1);
-            spin();
+            die();
         }
         next_phase();
     } else if (phase == PH_RECV_LEN) {
@@ -132,13 +138,13 @@ ISR(USART0_RX_vect)
         next_phase();
     } else if (phase == PH_RECV_DATA) {
         word_buf[word_byte] = UDR0;
-        if (++word_byte >= lengthof(word_buf)) {
+        if (++word_byte >= 2) {
             word_byte = 0;
 
             uint16_t word = word_buf[0] << 8 | word_buf[1];
-            uint8_t p = prgm_pos * 14;
+            uint16_t p = prgm_pos * 16;
             prgm_buf[p++] = 0;
-            for (unsigned int i = 0; i < 14; ++i) {
+            for (uint8_t i = 0; i < 14; ++i) {
                 prgm_buf[p++] = word & 1;
                 word >>= 1;
             }
@@ -156,7 +162,7 @@ ISR(USART0_UDRE_vect)
         UDR0 = 0xA4;
         next_phase();
     } else if (phase == PH_ACK_DATA) {
-        UDR0 = prgm_len;
+        UDR0 = 0xFE;
         next_phase();
     }
 }

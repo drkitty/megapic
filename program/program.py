@@ -23,7 +23,7 @@ program = (
 )
 
 
-s = serial.Serial('/dev/ttyACM0', baudrate=9600)
+s = serial.Serial('/dev/ttyACM0', baudrate=9600, timeout=.5)
 
 def r(*args, **kwargs):
     xx = s.read(*args, **kwargs)
@@ -31,9 +31,10 @@ def r(*args, **kwargs):
     return xx
 
 def w(x, *args, **kwargs):
-    xx = s.write(x, *args, **kwargs)
-    print('W  ' + ' '.join('{:02x}'.format(c) for c in x))
-    return xx
+    for b in x:
+        s.write(bb(b), *args, **kwargs)
+        print('W  ' + '{:02x}'.format(b))
+        sleep(.5)
 
 sleep(2)
 
@@ -44,11 +45,9 @@ w(bb(0xB4))
 
 w(bb(len(program) // 2))
 w(bytes(program))
-w(bb(0, 0, 0, 0, 0, 0, 0, 0))
-w(bb(0, 0, 0, 0, 0, 0, 0, 0))
-w(bb(0, 0, 0, 0, 0, 0, 0, 0))
-w(bb(0, 0, 0, 0, 0, 0, 0, 0))
 
 r(1)
 
 w(bb(0))
+
+r(1)
