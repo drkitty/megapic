@@ -26,8 +26,9 @@ void pic_init(struct pic_tf* buffer);
 //   returns the next transfer, or NULL if none remain
 // process_word:
 //   returns false if the word could not be processed yet
-bool pic_step(struct pic_tf* (* const next_phase)(),
-        bool (* const process_word)(uint16_t data));
+bool pic_step(bool (* const process_word)(uint16_t data));
+
+struct pic_tf* pic_run(struct pic_tf* tf, const bool final);
 
 struct pic_tf* pic_enter_lvp(struct pic_tf* tf, const bool final);
 

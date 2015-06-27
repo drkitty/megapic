@@ -13,81 +13,175 @@
 #include <stdlib.h>
 
 
-// All keys, commands, and data are LSb first.
+#define enable_timer() do { T3_config(-1, cs_clkio_8); } while (false)
+#define disable_timer() do { T3_config(-1, cs_none); TCNT3 = 0; } while (false)
 
 
-uint8_t config_data[] = {
-    0, // start
-    1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0,
-    0, // stop
-};
+// MSB first (network byte order)
+uint8_t word_buf[2];
+uint8_t word_byte;
+
+// LSb first with "start" and "stop" bits
+uint8_t prgm_buf[16 * 16];
+uint8_t prgm_len; // in words
+uint8_t prgm_pos; // in words
 
 
-uint8_t send_buf[2];
-unsigned int send_idx = lengthof(send_buf);
+uint8_t zeroes[16];
 
 
-struct pic_tf buffer[20];
+struct pic_tf tfs[50];
 
 
 enum {
-    PROGRAM_CONFIG,
-    READ_CONFIG,
-} phase = PROGRAM_CONFIG;
+    PH_HANDSHAKE_SEND,
+    PH_HANDSHAKE_RECV,
+    PH_PREP,
+    PH_RECV_LEN,
+    PH_RECV_DATA,
+    PH_WRITE_DATA,
+    PH_ACK_DATA,
+    PH_RUN,
+} phase = PH_HANDSHAKE_SEND;
 
 
-struct pic_tf* next_phase()
+void next_phase()
 {
-    static unsigned int count;
+    // clean up and advance
 
-    if (phase == PROGRAM_CONFIG) {
-        phase = READ_CONFIG;
-        count = 0;
-
-        struct pic_tf* buf = buffer;
-        buf = pic_read_data(buf, false);
-        pic_inc_addr(buf, true);
-    } else if (phase == READ_CONFIG) {
-        ++count;
-        if (count > 0x00A)
-            return NULL; // no more phases
+    if (phase == PH_HANDSHAKE_SEND) {
+        U0_ie_config(-1, -1, 0);
+        phase = PH_HANDSHAKE_RECV;
+    } else if (phase == PH_HANDSHAKE_RECV) {
+        U0_ie_config(0, -1, -1);
+        phase = PH_PREP;
+    } else if (phase == PH_PREP) {
+        disable_timer();
+        phase = PH_RECV_LEN;
+    } else if (phase == PH_RECV_LEN) {
+        if (prgm_len == 0)
+            phase = PH_RUN;
+        else if (prgm_len > 16)
+            spin();
+        else
+            phase = PH_RECV_DATA;
+    } else if (phase == PH_RECV_DATA) {
+        U0_ie_config(0, -1, -1);
+        phase = PH_WRITE_DATA;
+    } else if (phase == PH_WRITE_DATA) {
+        disable_timer();
+        phase = PH_ACK_DATA;
+    } else if (phase == PH_ACK_DATA) {
+        U0_ie_config(-1, -1, 0);
+        phase = PH_RECV_LEN;
+    } else if (phase == PH_RUN) {
+        disable_timer();
+        spin();
     }
-    return buffer;
+
+    // initialize
+
+    if (phase == PH_HANDSHAKE_RECV) {
+        U0_ie_config(1, -1, -1);
+    } else if (phase == PH_PREP) {
+        struct pic_tf* t = tfs;
+        t = pic_enter_lvp(t, false);
+        pic_bulk_erase(t, true);
+
+        pic_init(tfs);
+        enable_timer();
+    } else if (phase == PH_RECV_LEN) {
+        U0_ie_config(1, -1, -1);
+    } else if (phase == PH_RECV_DATA) {
+        word_byte = 0;
+        prgm_pos = 0;
+    } else if (phase == PH_WRITE_DATA) {
+        prgm_pos = 0;
+
+        struct pic_tf* t = tfs;
+        for (uint8_t i = 0; i < prgm_len * 16; i += 16) {
+            t = pic_load_data(t, false, &prgm_buf[i]);
+            t = pic_inc_addr(t, false);
+        }
+        pic_int_timed_prgm(t, true);
+
+        pic_init(tfs);
+        enable_timer();
+    } else if (phase == PH_ACK_DATA) {
+        U0_ie_config(-1, -1, 1);
+    } else if (phase == PH_RUN) {
+        pic_run(tfs, true);
+
+        pic_init(tfs);
+        enable_timer();
+        bset(PORTB, 1<<7);
+    }
+}
+
+
+ISR(USART0_RX_vect)
+{
+    if (phase == PH_HANDSHAKE_RECV) {
+        if (UDR0 != 0xB4) {
+            U0_config(0, 0, -1, -1, -1, -1, -1);
+            spin();
+        }
+        next_phase();
+    } else if (phase == PH_RECV_LEN) {
+        prgm_len = UDR0;
+        next_phase();
+    } else if (phase == PH_RECV_DATA) {
+        word_buf[word_byte] = UDR0;
+        if (++word_byte >= lengthof(word_buf)) {
+            word_byte = 0;
+
+            uint16_t word = word_buf[0] << 8 | word_buf[1];
+            uint8_t p = prgm_pos * 14;
+            prgm_buf[p++] = 0;
+            for (unsigned int i = 0; i < 14; ++i) {
+                prgm_buf[p++] = word & 1;
+                word >>= 1;
+            }
+            prgm_buf[p++] = 0;
+            if (++prgm_pos >= prgm_len)
+                next_phase();
+        }
+    }
 }
 
 
 ISR(USART0_UDRE_vect)
 {
-    UDR0 = send_buf[send_idx];
-    if (++send_idx >= lengthof(send_buf))
-        U0_ie_config(-1, -1, 0);
+    if (phase == PH_HANDSHAKE_SEND) {
+        UDR0 = 0xA4;
+        next_phase();
+    } else if (phase == PH_ACK_DATA) {
+        UDR0 = prgm_len;
+        next_phase();
+    }
 }
 
 
 bool process_word(uint16_t word)
 {
-    if (send_idx < lengthof(send_buf))
-        return false;
-    send_buf[0] = word >> 8;
-    send_buf[1] = word & 0xFF;
-    send_idx = 0;
-    U0_ie_config(-1, -1, 1);
+    (void)word;
     return true;
 }
 
 
 ISR(TIMER3_COMPA_vect)
 {
-    if (!pic_step(next_phase, process_word))
-        T3_config(-1, cs_none);
+    if (!pic_step(process_word))
+        next_phase();
 }
 
 
 int main()
 {
-    U0_config(0, 1, umode_async, upar_none, ustop_1, usize_8, 103);
+    U0_ie_config(0, 0, 1);
+    U0_config(0, 0, -1, -1, -1, -1, -1);
+    U0_config(1, 1, umode_async, upar_none, ustop_1, usize_8, 103);
     // 9600 baud
-    U0_ie_config(1, 0, 0);
 
     bset(DDRB, 1<<7);
     bclr(PORTB, 1<<7);
@@ -96,34 +190,6 @@ int main()
     T3A_config(com_dc, 1);
     OCR3A = 40; // 50 kHz (period 20 us)
 
-    {
-        struct pic_tf* buf = buffer;
-
-        buf = pic_enter_lvp(buf, false);
-
-        buf = pic_load_config(buf, false, config_data); // data is irrelevant
-        buf = pic_bulk_erase(buf, false);
-
-        buf = pic_load_data(buf, false, config_data);
-        buf = pic_inc_addr(buf, false);
-
-        buf = pic_load_data(buf, false, config_data);
-        buf = pic_inc_addr(buf, false);
-
-        buf = pic_load_data(buf, false, config_data);
-        buf = pic_inc_addr(buf, false);
-
-        buf = pic_load_data(buf, false, config_data);
-
-        buf = pic_int_timed_prgm(buf, false);
-
-        buf = pic_load_config(buf, true, config_data);
-    }
-
-    pic_init(buffer);
-
-    TCNT3 = 0;
-    T3_config(-1, cs_clkio_8);
     sei();
 
     spin();

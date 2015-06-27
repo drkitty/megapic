@@ -77,7 +77,6 @@ static struct pic_tf* tf = NULL;
 void tf_init(struct pic_tf* tf)
 {
     bclror(DDRA, 1<<DAT, (tf->in ? 0 : 1)<<DAT);
-    bclror(PORTB, 1<<7, (tf->in ? 0 : 1)<<7);
     bclror(PORTA, 1<<MCLR_N, tf->mclr_n<<MCLR_N);
 }
 
@@ -90,8 +89,7 @@ void pic_init(struct pic_tf* buffer)
 }
 
 
-bool pic_step(struct pic_tf* (* const next_phase)(),
-        bool (* const process_word)(uint16_t data))
+bool pic_step(bool (* const process_word)(uint16_t data))
 {
     enum {
         WAITING = -1,
@@ -147,9 +145,7 @@ bool pic_step(struct pic_tf* (* const next_phase)(),
         //
 
         if (tf->final) {
-            tf = next_phase();
-            if (tf == NULL)
-                return false;
+            return false;
         } else {
             ++tf;
         }
@@ -163,13 +159,22 @@ bool pic_step(struct pic_tf* (* const next_phase)(),
 }
 
 
-struct pic_tf* pic_enter_lvp(struct pic_tf* tf, bool final)
+struct pic_tf* pic_run(struct pic_tf* tf, const bool final)
 {
-    // run
     *(tf++) = (struct pic_tf){
         .mclr_n = 1,
         .post_delay = T_ENTS,
+        .final = final,
     };
+
+    return tf;
+}
+
+
+struct pic_tf* pic_enter_lvp(struct pic_tf* tf, const bool final)
+{
+    // run
+    tf = pic_run(tf, false);
 
     // reset
     *(tf++) = (struct pic_tf){
