@@ -41,8 +41,17 @@ if r(1)[0] != 0xA4:
     raise Exception('Handshake failed')
 w(bb(0xB4))
 
-for b in program:
-    r(1)
-    w(bytes(b))
+#for b in program:
+    #r(1)
+    #w(bytes(b))
+    #r(2)
+
+r(1)
+w(bb(0x52, 0x34, 0))
+r(2)
+
+r(1)
+w(bb(0x52, 0x34, 0))
+r(2)
 
 w(bb(2))
