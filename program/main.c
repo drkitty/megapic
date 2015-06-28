@@ -18,37 +18,44 @@
 
 
 // MSB first (network byte order)
-uint8_t recv_buf[2 * 16];
+uint8_t recv_buf[3];
 uint8_t recv_idx;
 
-// LSb first with "start" and "stop" bits
-uint8_t prgm_buf[16 * 16];
-uint8_t prgm_len; // in words
-uint8_t prgm_pos; // in words
+enum {
+    C_DATA = 0,
+    C_CONFIG = 1,
+    C_RUN = 2,
+    // 3 is reserved
+} cmd;
 
-
-uint8_t zeroes[16];
+// start bit, data (LSb first), stop bit
+uint8_t prgm_buf[16] = {0};
 
 
 struct pic_tf tfs[50];
 
 
+uint8_t sync = 0;
+
+
 enum {
+    PH_START,
     PH_HANDSHAKE_SEND,
     PH_HANDSHAKE_RECV,
     PH_PREP,
-    PH_RECV_LEN,
-    PH_RECV_DATA,
-    PH_WRITE_DATA,
-    PH_ACK_DATA,
-    PH_RUN,
-} phase = PH_HANDSHAKE_SEND;
+    PH_READY,
+    PH_CMD_RECV,
+    PH_CMD_EXEC,
+    PH_DIE,
+} phase = PH_START;
 
 
 void die()
 {
+    cli();
     disable_timer();
     U0_config(0, 0, -1, -1, -1, -1, -1);
+    bset(PORTB, 1<<7);
     spin();
 }
 
@@ -57,7 +64,9 @@ void next_phase()
 {
     // clean up and advance
 
-    if (phase == PH_HANDSHAKE_SEND) {
+    if (phase == PH_START) {
+        phase = PH_HANDSHAKE_SEND;
+    } else if (phase == PH_HANDSHAKE_SEND) {
         U0_ie_config(-1, -1, 0);
         phase = PH_HANDSHAKE_RECV;
     } else if (phase == PH_HANDSHAKE_RECV) {
@@ -65,76 +74,68 @@ void next_phase()
         phase = PH_PREP;
     } else if (phase == PH_PREP) {
         disable_timer();
-        phase = PH_RECV_LEN;
-    } else if (phase == PH_RECV_LEN) {
-        if (prgm_len == 0)
-            phase = PH_RUN;
-        else if (prgm_len > 16)
-            spin();
-        else
-            phase = PH_RECV_DATA;
-    } else if (phase == PH_RECV_DATA) {
-        U0_ie_config(0, -1, -1);
-
-        for (recv_idx = 0; recv_idx < prgm_len * 2; recv_idx += 2) {
-            // MSB first
-            uint16_t word = recv_buf[recv_idx] << 8 | recv_buf[recv_idx + 1];
-            uint16_t p = prgm_pos * 16;
-            prgm_buf[p++] = 0;
-            for (uint8_t i = 0; i < 14; ++i) {
-                prgm_buf[p++] = word & 1;
-                word >>= 1;
-            }
-            prgm_buf[p++] = 0;
-        }
-
-        phase = PH_WRITE_DATA;
-    } else if (phase == PH_WRITE_DATA) {
-        disable_timer();
-        phase = PH_ACK_DATA;
-    } else if (phase == PH_ACK_DATA) {
+        phase = PH_READY;
+    } else if (phase == PH_READY) {
         U0_ie_config(-1, -1, 0);
-        phase = PH_RECV_LEN;
-    } else if (phase == PH_RUN) {
-        die();
+        phase = PH_CMD_RECV;
+    } else if (phase == PH_CMD_RECV) {
+        U0_ie_config(0, -1, -1);
+        phase = PH_CMD_EXEC;
+    } else if (phase == PH_CMD_EXEC) {
+        disable_timer();
+        phase = PH_READY;
     }
 
     // initialize
 
-    if (phase == PH_HANDSHAKE_RECV) {
+    if (phase == PH_HANDSHAKE_SEND) {
+        U0_ie_config(-1, -1, 1);
+    } else if (phase == PH_HANDSHAKE_RECV) {
         U0_ie_config(1, -1, -1);
     } else if (phase == PH_PREP) {
         struct pic_tf* t = tfs;
         t = pic_enter_lvp(t, false);
-        pic_bulk_erase(t, true);
+        t = pic_reset_addr(t, false);
+        t = pic_bulk_erase(t, true);
 
         pic_init(tfs);
         enable_timer();
-    } else if (phase == PH_RECV_LEN) {
-        U0_ie_config(1, -1, -1);
-    } else if (phase == PH_RECV_DATA) {
+    } else if (phase == PH_READY) {
+        U0_ie_config(-1, -1, 1);
+    } else if (phase == PH_CMD_RECV) {
         recv_idx = 0;
-        prgm_pos = 0;
-    } else if (phase == PH_WRITE_DATA) {
-        prgm_pos = 0;
+        U0_ie_config(1, -1, -1);
+    } else if (phase == PH_CMD_EXEC) {
+        if (cmd == C_DATA || cmd == C_CONFIG) {
+            uint16_t word = (recv_buf[0] << 8) | recv_buf[1];
+            for (uint8_t i = 1; i <= 14; ++i) {
+                prgm_buf[i] = word & 1;
+                word >>= 1;
+            }
+        }
 
         struct pic_tf* t = tfs;
-        for (uint16_t i = 0; i < prgm_len * 16; i += 16) {
-            t = pic_load_data(t, false, &prgm_buf[i]);
-            t = pic_inc_addr(t, false);
+        if (cmd == C_DATA) {
+            t = pic_load_data(t, false, prgm_buf);
+            t = pic_int_timed_prgm(t, false);
+            t = pic_inc_addr(t, true);
+        } else if (cmd == C_CONFIG) {
+            t = pic_load_config(t, false, prgm_buf);
+            for (uint8_t i = 0; i < recv_buf[2]; ++i)
+                t = pic_inc_addr(t, false);
+            t = pic_int_timed_prgm(t, true);
+        } else if (cmd == C_RUN) {
+            t = pic_run(t, true);
+            phase = PH_DIE;
+        } else {
+            // illegal command
+            die();
         }
-        pic_int_timed_prgm(t, true);
 
         pic_init(tfs);
         enable_timer();
-    } else if (phase == PH_ACK_DATA) {
-        U0_ie_config(-1, -1, 1);
-    } else if (phase == PH_RUN) {
-        pic_run(tfs, true);
-
-        pic_init(tfs);
-        enable_timer();
-        bset(PORTB, 1<<7);
+    } else if (phase == PH_DIE) {
+        die();
     }
 }
 
@@ -146,15 +147,15 @@ ISR(USART0_RX_vect)
             die();
         }
         next_phase();
-    } else if (phase == PH_RECV_LEN) {
-        prgm_len = UDR0;
-        next_phase();
-    } else if (phase == PH_RECV_DATA) {
+    } else if (phase == PH_CMD_RECV) {
         recv_buf[recv_idx] = UDR0;
-        while ((UCSR0A & 1<<5) == 0)
-            __asm("");
-        UDR0 = recv_idx;
-        if (++recv_idx >= prgm_len * 2)
+        if (recv_idx == 0)
+            cmd = recv_buf[0] >> 6;
+
+        ++recv_idx;
+        if ((cmd == C_DATA && recv_idx >= 2) ||
+                (cmd == C_CONFIG && recv_idx >= 3) ||
+                (cmd == C_RUN))
             next_phase();
     }
 }
@@ -165,8 +166,8 @@ ISR(USART0_UDRE_vect)
     if (phase == PH_HANDSHAKE_SEND) {
         UDR0 = 0xA4;
         next_phase();
-    } else if (phase == PH_ACK_DATA) {
-        UDR0 = 0xFE;
+    } else if (phase == PH_READY) {
+        UDR0 = sync++;
         next_phase();
     }
 }
@@ -188,7 +189,7 @@ ISR(TIMER3_COMPA_vect)
 
 int main()
 {
-    U0_ie_config(0, 0, 1);
+    U0_ie_config(0, 0, 0);
     U0_config(0, 0, -1, -1, -1, -1, -1);
     U0_config(1, 1, umode_async, upar_none, ustop_1, usize_8, 103);
     // 9600 baud
@@ -199,6 +200,8 @@ int main()
     T3_config(wgm_ctc_ocr, cs_none);
     T3A_config(com_dc, 1);
     OCR3A = 40; // 50 kHz (period 20 us)
+
+    next_phase();
 
     sei();
 
