@@ -28,6 +28,7 @@ enum {
     // 3 is reserved
 } cmd;
 
+uint16_t prgm_word;
 // start bit, data (LSb first), stop bit
 uint8_t prgm_buf[16] = {0};
 
@@ -83,6 +84,8 @@ void next_phase()
         phase = PH_CMD_EXEC;
     } else if (phase == PH_CMD_EXEC) {
         disable_timer();
+        if (cmd == C_RUN)
+            die();
         phase = PH_READY;
     }
 
@@ -108,6 +111,7 @@ void next_phase()
     } else if (phase == PH_CMD_EXEC) {
         if (cmd == C_DATA || cmd == C_CONFIG) {
             uint16_t word = (recv_buf[0] << 8) | recv_buf[1];
+            prgm_word = word;
             for (uint8_t i = 1; i <= 14; ++i) {
                 prgm_buf[i] = word & 1;
                 word >>= 1;
@@ -118,15 +122,16 @@ void next_phase()
         if (cmd == C_DATA) {
             t = pic_load_data(t, false, prgm_buf);
             t = pic_int_timed_prgm(t, false);
+            t = pic_read_data(t, false);
             t = pic_inc_addr(t, true);
         } else if (cmd == C_CONFIG) {
             t = pic_load_config(t, false, prgm_buf);
             for (uint8_t i = 0; i < recv_buf[2]; ++i)
                 t = pic_inc_addr(t, false);
-            t = pic_int_timed_prgm(t, true);
+            t = pic_int_timed_prgm(t, false);
+            t = pic_read_data(t, true);
         } else if (cmd == C_RUN) {
             t = pic_run(t, true);
-            phase = PH_DIE;
         } else {
             // illegal command
             die();
@@ -149,8 +154,10 @@ ISR(USART0_RX_vect)
         next_phase();
     } else if (phase == PH_CMD_RECV) {
         recv_buf[recv_idx] = UDR0;
-        if (recv_idx == 0)
+        if (recv_idx == 0) {
             cmd = recv_buf[0] >> 6;
+            recv_buf[0] &= 0x3F;
+        }
 
         ++recv_idx;
         if ((cmd == C_DATA && recv_idx >= 2) ||
@@ -175,7 +182,8 @@ ISR(USART0_UDRE_vect)
 
 bool process_word(uint16_t word)
 {
-    (void)word;
+    if (word != prgm_word)
+        die();
     return true;
 }
 
