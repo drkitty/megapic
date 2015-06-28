@@ -14,7 +14,8 @@
 
 
 #define enable_timer() do { T3_config(-1, cs_clkio_8); } while (false)
-#define disable_timer() do { T3_config(-1, cs_none); TCNT3 = 0; } while (false)
+#define disable_timer() do { \
+    T3_config(-1, cs_none); TCNT3 = 0; bset(TIFR3, 1<<OCF3A); } while (false)
 
 
 // MSB first (network byte order)
