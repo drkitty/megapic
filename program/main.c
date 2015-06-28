@@ -55,6 +55,7 @@ enum {
 
 void die()
 {
+    bset(PORTB, 1<<7);
     cli();
     disable_timer();
     U0_config(0, 0, -1, -1, -1, -1, -1);
@@ -111,7 +112,6 @@ void next_phase()
         enable_timer();
     } else if (phase == PH_READY) {
         U0_ie_config(-1, -1, 1);
-        bset(PORTB, 1<<7);
     } else if (phase == PH_CMD_RECV) {
         uart_idx = 0;
         U0_ie_config(1, -1, -1);
@@ -186,7 +186,6 @@ ISR(USART0_UDRE_vect)
         UDR0 = 0xA4;
         next_phase();
     } else if (phase == PH_READY) {
-        bclr(PORTB, 1<<7);
         UDR0 = sync++;
         next_phase();
     } else if (phase == PH_DATA_SEND) {
