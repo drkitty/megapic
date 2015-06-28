@@ -23,7 +23,7 @@ program = (
 )
 
 
-s = serial.Serial('/dev/ttyACM0', baudrate=9600, timeout=.5)
+s = serial.Serial('/dev/ttyACM0', baudrate=9600)
 
 def r(*args, **kwargs):
     xx = s.read(*args, **kwargs)
@@ -31,17 +31,14 @@ def r(*args, **kwargs):
     return xx
 
 def w(x, *args, **kwargs):
-    for b in x:
-        s.write(bb(b), *args, **kwargs)
-        print('W  ' + '{:02x}'.format(b))
-
-sleep(2)
+    xx = s.write(x, *args, **kwargs)
+    print('W  ' + ' '.join('{:02x}'.format(c) for c in x))
+    return xx
 
 b = r(1)
 if b[0] != 0xA4:
     raise Exception('Handshake failed')
 w(bb(0xB4))
-
 
 w(bb(len(program) // 2))
 for b in program:
@@ -51,5 +48,3 @@ for b in program:
 r(1)
 
 w(bb(0))
-
-r(1)
