@@ -13,12 +13,10 @@ struct pic_tf {
     uint8_t* data;
 
     unsigned int post_delay;
-
-    bool final;
 };
 
 
-void pic_init(struct pic_tf* buffer);
+void pic_init(struct pic_tf* buffer, struct pic_tf* end);
 
 // returns whether to call pic_step again
 //
@@ -28,24 +26,22 @@ void pic_init(struct pic_tf* buffer);
 //   returns false if the word could not be processed yet
 bool pic_step(bool (* const process_word)(uint16_t data));
 
-struct pic_tf* pic_run(struct pic_tf* tf, const bool final);
+struct pic_tf* pic_run(struct pic_tf* tf);
 
-struct pic_tf* pic_enter_lvp(struct pic_tf* tf, const bool final);
+struct pic_tf* pic_enter_lvp(struct pic_tf* tf);
 
-struct pic_tf* pic_load_config(struct pic_tf* tf, const bool final,
-        uint8_t* const data);
+struct pic_tf* pic_load_config(struct pic_tf* tf, uint8_t* const data);
 
-struct pic_tf* pic_load_data(struct pic_tf* tf, const bool final,
-        uint8_t* const data);
+struct pic_tf* pic_load_data(struct pic_tf* tf, uint8_t* const data);
 
-struct pic_tf* pic_read_data(struct pic_tf* tf, const bool final);
+struct pic_tf* pic_read_data(struct pic_tf* tf);
 
-struct pic_tf* pic_inc_addr(struct pic_tf* tf, const bool final);
+struct pic_tf* pic_inc_addr(struct pic_tf* tf);
 
-struct pic_tf* pic_reset_addr(struct pic_tf* tf, const bool final);
+struct pic_tf* pic_reset_addr(struct pic_tf* tf);
 
-struct pic_tf* pic_int_timed_prgm(struct pic_tf* tf, const bool final);
+struct pic_tf* pic_int_timed_prgm(struct pic_tf* tf);
 
-struct pic_tf* pic_bulk_erase(struct pic_tf* tf, const bool final);
+struct pic_tf* pic_bulk_erase(struct pic_tf* tf);
 
-struct pic_tf* pic_row_erase(struct pic_tf* tf, const bool final);
+struct pic_tf* pic_row_erase(struct pic_tf* tf);

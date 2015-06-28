@@ -103,12 +103,12 @@ void next_phase()
         U0_ie_config(1, -1, -1);
     } else if (phase == PH_PREP) {
         struct pic_tf* t = tfs;
-        t = pic_enter_lvp(t, false);
-        t = pic_load_config(t, false, prgm_buf);
-        t = pic_bulk_erase(t, false);
-        t = pic_reset_addr(t, true);
+        t = pic_enter_lvp(t);
+        t = pic_load_config(t, prgm_buf);
+        t = pic_bulk_erase(t);
+        t = pic_reset_addr(t);
 
-        pic_init(tfs);
+        pic_init(tfs, t);
         enable_timer();
     } else if (phase == PH_READY) {
         U0_ie_config(-1, -1, 1);
@@ -127,24 +127,24 @@ void next_phase()
 
         struct pic_tf* t = tfs;
         if (cmd == C_DATA) {
-            t = pic_load_data(t, false, prgm_buf);
-            t = pic_int_timed_prgm(t, false);
-            t = pic_read_data(t, false);
-            t = pic_inc_addr(t, true);
+            t = pic_load_data(t, prgm_buf);
+            t = pic_int_timed_prgm(t);
+            t = pic_read_data(t);
+            t = pic_inc_addr(t);
         } else if (cmd == C_CONFIG) {
-            t = pic_load_config(t, false, prgm_buf);
+            t = pic_load_config(t, prgm_buf);
             for (uint8_t i = 0; i < uart_buf[2]; ++i)
-                t = pic_inc_addr(t, false);
-            t = pic_int_timed_prgm(t, false);
-            t = pic_read_data(t, true);
+                t = pic_inc_addr(t);
+            t = pic_int_timed_prgm(t);
+            t = pic_read_data(t);
         } else if (cmd == C_RUN) {
-            t = pic_run(t, true);
+            t = pic_run(t);
         } else {
             // illegal command
             die();
         }
 
-        pic_init(tfs);
+        pic_init(tfs, t);
         enable_timer();
     } else if (phase == PH_DATA_SEND) {
         uart_idx = 0;

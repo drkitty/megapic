@@ -72,6 +72,7 @@ uint8_t read_data_data[16];
 
 
 static struct pic_tf* tf = NULL;
+static struct pic_tf* end = NULL;
 
 
 void tf_init(struct pic_tf* tf)
@@ -81,9 +82,10 @@ void tf_init(struct pic_tf* tf)
 }
 
 
-void pic_init(struct pic_tf* buffer)
+void pic_init(struct pic_tf* buffer, struct pic_tf* end_)
 {
     tf = buffer;
+    end = end_;
     bset(DDRA, 1<<MCLR_N | 1<<DAT | 1<<CLK);
     tf_init(tf);
 }
@@ -144,11 +146,10 @@ bool pic_step(bool (* const process_word)(uint16_t data))
         // advance
         //
 
-        if (tf->final) {
+        ++tf;
+
+        if (tf >= end)
             return false;
-        } else {
-            ++tf;
-        }
 
         b = 0;
         word = WAITING;
@@ -159,22 +160,21 @@ bool pic_step(bool (* const process_word)(uint16_t data))
 }
 
 
-struct pic_tf* pic_run(struct pic_tf* tf, const bool final)
+struct pic_tf* pic_run(struct pic_tf* tf)
 {
     *(tf++) = (struct pic_tf){
         .mclr_n = 1,
         .post_delay = T_ENTS,
-        .final = final,
     };
 
     return tf;
 }
 
 
-struct pic_tf* pic_enter_lvp(struct pic_tf* tf, const bool final)
+struct pic_tf* pic_enter_lvp(struct pic_tf* tf)
 {
     // run
-    tf = pic_run(tf, false);
+    tf = pic_run(tf);
 
     // reset
     *(tf++) = (struct pic_tf){
@@ -186,7 +186,6 @@ struct pic_tf* pic_enter_lvp(struct pic_tf* tf, const bool final)
         .len = lengthof(lvp_key),
         .data = lvp_key,
         .post_delay = T_DLY,
-        .final = final,
     };
 
     return tf;
@@ -194,8 +193,7 @@ struct pic_tf* pic_enter_lvp(struct pic_tf* tf, const bool final)
 
 
 // Load configuration
-struct pic_tf* pic_load_config(struct pic_tf* tf, const bool final,
-        uint8_t* const data)
+struct pic_tf* pic_load_config(struct pic_tf* tf, uint8_t* const data)
 {
     *(tf++) = (struct pic_tf){
         .len = lengthof(load_config_cmd),
@@ -207,7 +205,6 @@ struct pic_tf* pic_load_config(struct pic_tf* tf, const bool final,
         .len = 16,
         .data = data,
         .post_delay = T_DLY,
-        .final = final,
     };
 
     return tf;
@@ -215,8 +212,7 @@ struct pic_tf* pic_load_config(struct pic_tf* tf, const bool final,
 
 
 // Load data for program memory
-struct pic_tf* pic_load_data(struct pic_tf* tf, const bool final,
-        uint8_t* const data)
+struct pic_tf* pic_load_data(struct pic_tf* tf, uint8_t* const data)
 {
     *(tf++) = (struct pic_tf){
         .len = lengthof(load_data_cmd),
@@ -228,7 +224,6 @@ struct pic_tf* pic_load_data(struct pic_tf* tf, const bool final,
         .len = 16,
         .data = data,
         .post_delay = T_DLY,
-        .final = final,
     };
 
     return tf;
@@ -236,7 +231,7 @@ struct pic_tf* pic_load_data(struct pic_tf* tf, const bool final,
 
 
 // Read data from program memory
-struct pic_tf* pic_read_data(struct pic_tf* tf, const bool final)
+struct pic_tf* pic_read_data(struct pic_tf* tf)
 {
     *(tf++) = (struct pic_tf){
         .len = lengthof(read_data_cmd),
@@ -249,7 +244,6 @@ struct pic_tf* pic_read_data(struct pic_tf* tf, const bool final)
         .len = lengthof(read_data_data),
         .data = read_data_data,
         .post_delay = T_DLY,
-        .final = final,
     };
 
     return tf;
@@ -257,13 +251,12 @@ struct pic_tf* pic_read_data(struct pic_tf* tf, const bool final)
 
 
 // Increment address
-struct pic_tf* pic_inc_addr(struct pic_tf* tf, const bool final)
+struct pic_tf* pic_inc_addr(struct pic_tf* tf)
 {
     *(tf++) = (struct pic_tf){
         .len = lengthof(inc_addr_cmd),
         .data = inc_addr_cmd,
         .post_delay = T_DLY,
-        .final = final,
     };
 
     return tf;
@@ -271,13 +264,12 @@ struct pic_tf* pic_inc_addr(struct pic_tf* tf, const bool final)
 
 
 // Reset address
-struct pic_tf* pic_reset_addr(struct pic_tf* tf, const bool final)
+struct pic_tf* pic_reset_addr(struct pic_tf* tf)
 {
     *(tf++) = (struct pic_tf){
         .len = lengthof(reset_addr_cmd),
         .data = reset_addr_cmd,
         .post_delay = T_DLY,
-        .final = final,
     };
 
     return tf;
@@ -285,13 +277,12 @@ struct pic_tf* pic_reset_addr(struct pic_tf* tf, const bool final)
 
 
 // Begin internally timed programming
-struct pic_tf* pic_int_timed_prgm(struct pic_tf* tf, const bool final)
+struct pic_tf* pic_int_timed_prgm(struct pic_tf* tf)
 {
     *(tf++) = (struct pic_tf){
         .len = lengthof(int_timed_prgm_cmd),
         .data = int_timed_prgm_cmd,
         .post_delay = T_PINT,
-        .final = final,
     };
 
     return tf;
@@ -299,13 +290,12 @@ struct pic_tf* pic_int_timed_prgm(struct pic_tf* tf, const bool final)
 
 
 // Bulk erase program memory
-struct pic_tf* pic_bulk_erase(struct pic_tf* tf, const bool final)
+struct pic_tf* pic_bulk_erase(struct pic_tf* tf)
 {
     *(tf++) = (struct pic_tf){
         .len = lengthof(bulk_erase_cmd),
         .data = bulk_erase_cmd,
         .post_delay = T_ERAB,
-        .final = final,
     };
 
     return tf;
@@ -313,13 +303,12 @@ struct pic_tf* pic_bulk_erase(struct pic_tf* tf, const bool final)
 
 
 // Row erase program memory
-struct pic_tf* pic_row_erase(struct pic_tf* tf, const bool final)
+struct pic_tf* pic_row_erase(struct pic_tf* tf)
 {
     *(tf++) = (struct pic_tf){
         .len = lengthof(row_erase_cmd),
         .data = row_erase_cmd,
         .post_delay = T_ERAR,
-        .final = final,
     };
 
     return tf;
