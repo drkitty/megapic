@@ -18,8 +18,8 @@
 
 
 // MSB first (network byte order)
-uint8_t word_buf[2];
-uint8_t word_byte;
+uint8_t recv_buf[2 * 16];
+uint8_t recv_idx;
 
 // LSb first with "start" and "stop" bits
 uint8_t prgm_buf[16 * 16];
@@ -75,6 +75,19 @@ void next_phase()
             phase = PH_RECV_DATA;
     } else if (phase == PH_RECV_DATA) {
         U0_ie_config(0, -1, -1);
+
+        for (recv_idx = 0; recv_idx < prgm_len * 2; recv_idx += 2) {
+            // MSB first
+            uint16_t word = recv_buf[recv_idx] << 8 | recv_buf[recv_idx + 1];
+            uint16_t p = prgm_pos * 16;
+            prgm_buf[p++] = 0;
+            for (uint8_t i = 0; i < 14; ++i) {
+                prgm_buf[p++] = word & 1;
+                word >>= 1;
+            }
+            prgm_buf[p++] = 0;
+        }
+
         phase = PH_WRITE_DATA;
     } else if (phase == PH_WRITE_DATA) {
         disable_timer();
@@ -100,7 +113,7 @@ void next_phase()
     } else if (phase == PH_RECV_LEN) {
         U0_ie_config(1, -1, -1);
     } else if (phase == PH_RECV_DATA) {
-        word_byte = 0;
+        recv_idx = 0;
         prgm_pos = 0;
     } else if (phase == PH_WRITE_DATA) {
         prgm_pos = 0;
@@ -137,21 +150,12 @@ ISR(USART0_RX_vect)
         prgm_len = UDR0;
         next_phase();
     } else if (phase == PH_RECV_DATA) {
-        word_buf[word_byte] = UDR0;
-        if (++word_byte >= 2) {
-            word_byte = 0;
-
-            uint16_t word = word_buf[0] << 8 | word_buf[1];
-            uint16_t p = prgm_pos * 16;
-            prgm_buf[p++] = 0;
-            for (uint8_t i = 0; i < 14; ++i) {
-                prgm_buf[p++] = word & 1;
-                word >>= 1;
-            }
-            prgm_buf[p++] = 0;
-            if (++prgm_pos >= prgm_len)
-                next_phase();
-        }
+        recv_buf[recv_idx] = UDR0;
+        while ((UCSR0A & 1<<5) == 0)
+            __asm("");
+        UDR0 = recv_idx;
+        if (++recv_idx >= prgm_len * 2)
+            next_phase();
     }
 }
 

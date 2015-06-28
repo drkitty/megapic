@@ -34,7 +34,6 @@ def w(x, *args, **kwargs):
     for b in x:
         s.write(bb(b), *args, **kwargs)
         print('W  ' + '{:02x}'.format(b))
-        sleep(.5)
 
 sleep(2)
 
@@ -43,8 +42,11 @@ if b[0] != 0xA4:
     raise Exception('Handshake failed')
 w(bb(0xB4))
 
+
 w(bb(len(program) // 2))
-w(bytes(program))
+for b in program:
+    w(bb(b))
+    r(1)
 
 r(1)
 
