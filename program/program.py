@@ -11,7 +11,7 @@ from time import sleep
 import serial
 
 
-DEBUG = True
+DEBUG = False
 
 
 def bb(*args):
@@ -42,6 +42,9 @@ def w(x, *args, **kwargs):
     return xx
 
 def d(*args, **kwargs):
+    if not DEBUG:
+        return
+
     while True:
         (c,) = s.read(1, *args, **kwargs)
         if c == 0xFF:
@@ -58,25 +61,9 @@ if r(1)[0] != 0xA4:
 w(bb(0xB4))
 d()
 
-#for b in program:
-    #r(1)
-    #w(bytes(b))
-    #r(2)
-
-for x in range(4):
+for b in program:
     r(1)
-    w(bb(0x39, 0x1B))
-    d()
-    r(2)
-
-r(1)
-w(bb(0x00, 0x06))  # 0000 0000 0000 0110
-d()
-r(2)
-
-for x in range(4):
-    r(1)
-    w(bb(0x39, 0x1B))
+    w(bytes(b))
     d()
     r(2)
 

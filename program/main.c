@@ -216,7 +216,7 @@ void debug(uint8_t val)
 
 ISR(TIMER3_COMPA_vect)
 {
-    if (!pic_step(process_word, debug))
+    if (!pic_step(process_word, NULL))
         next_phase();
 }
 
