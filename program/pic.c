@@ -150,6 +150,9 @@ bool pic_step(bool (* const process_word)(uint16_t data),
         // advance
         //
 
+        b = 0;
+        word = WAITING;
+
         ++tf;
 
         if (tf >= end) {
@@ -158,8 +161,6 @@ bool pic_step(bool (* const process_word)(uint16_t data),
             return false;
         }
 
-        b = 0;
-        word = WAITING;
         tf_init(tf);
     }
 
