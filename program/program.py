@@ -54,6 +54,7 @@ def program(name):
     w(bb(0xB4))
     d()
 
+    # Parse the INHX8M hex format.
     with open(name) as f:
         for line in f:
             assert line[0] == ':'
