@@ -91,7 +91,8 @@ void pic_init(struct pic_tf* buffer, struct pic_tf* end_)
 }
 
 
-bool pic_step(bool (* const process_word)(uint16_t data))
+bool pic_step(bool (* const process_word)(uint16_t data),
+        void (* const debug)(uint8_t val))
 {
     enum {
         WAITING = -1,
@@ -117,6 +118,9 @@ bool pic_step(bool (* const process_word)(uint16_t data))
                 bclror(PORTA, 1<<DAT, tf->data[b]<<DAT);
             bset(PORTA, 1<<CLK);
         }
+
+        if (debug != NULL)
+            debug(PORTA);
     } else if (b < tf->len + tf->post_delay) {
         //
         // delay
@@ -148,8 +152,11 @@ bool pic_step(bool (* const process_word)(uint16_t data))
 
         ++tf;
 
-        if (tf >= end)
+        if (tf >= end) {
+            if (debug != NULL)
+                debug(0xFF);
             return false;
+        }
 
         b = 0;
         word = WAITING;

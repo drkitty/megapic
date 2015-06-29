@@ -37,7 +37,7 @@ uint8_t prgm_buf[16] = {0};
 struct pic_tf tfs[50];
 
 
-uint8_t sync = 0xEA;
+uint8_t sync = 0;
 
 
 enum {
@@ -55,8 +55,8 @@ enum {
 
 void die()
 {
-    bset(PORTB, 1<<7);
     cli();
+    bclr(PORTB, 1<<7);
     disable_timer();
     U0_config(0, 0, -1, -1, -1, -1, -1);
     spin();
@@ -104,9 +104,8 @@ void next_phase()
     } else if (phase == PH_PREP) {
         struct pic_tf* t = tfs;
         t = pic_enter_lvp(t);
-        t = pic_load_config(t, prgm_buf);
-        t = pic_bulk_erase(t);
         t = pic_reset_addr(t);
+        t = pic_bulk_erase(t);
 
         pic_init(tfs, t);
         enable_timer();
@@ -133,6 +132,8 @@ void next_phase()
             t = pic_inc_addr(t);
         } else if (cmd == C_CONFIG) {
             t = pic_load_config(t, prgm_buf);
+            if (uart_buf[2] > 0x0B)
+                die();
             for (uint8_t i = 0; i < uart_buf[2]; ++i)
                 t = pic_inc_addr(t);
             t = pic_int_timed_prgm(t);
@@ -206,9 +207,16 @@ bool process_word(uint16_t word)
 }
 
 
+void debug(uint8_t val)
+{
+    while (!btst(UCSR0A, 1<<UDRE0)) { /* wait */ }
+    UDR0 = val;
+}
+
+
 ISR(TIMER3_COMPA_vect)
 {
-    if (!pic_step(process_word))
+    if (!pic_step(process_word, debug))
         next_phase();
 }
 
@@ -221,7 +229,7 @@ int main()
     // 9600 baud
 
     bset(DDRB, 1<<7);
-    bclr(PORTB, 1<<7);
+    bset(PORTB, 1<<7);
 
     T3_config(wgm_ctc_ocr, cs_none);
     T3A_config(com_dc, 1);

@@ -12,7 +12,7 @@ struct pic_tf {
     unsigned int len;
     uint8_t* data;
 
-    unsigned int post_delay;
+    uint16_t post_delay;
 };
 
 
@@ -20,11 +20,12 @@ void pic_init(struct pic_tf* buffer, struct pic_tf* end);
 
 // returns whether to call pic_step again
 //
-// next_phase:
-//   returns the next transfer, or NULL if none remain
 // process_word:
 //   returns false if the word could not be processed yet
-bool pic_step(bool (* const process_word)(uint16_t data));
+// debug:
+//   do something with PORTA
+bool pic_step(bool (* const process_word)(uint16_t data),
+        void (* const debug)(uint8_t val));
 
 struct pic_tf* pic_run(struct pic_tf* tf);
 
